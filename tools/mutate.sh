@@ -29,6 +29,9 @@ trap 'rm -rf "$WORK"' EXIT
 # A check runs at 320x180 unless it names a raster: '--edges@1280x720' (a Black edge with
 # no margin past it is off by 0.00098 at 320x180, exactly the visibility tolerance,
 # and by 0.0048 at 1280x720).
+# No mutant may make the kernel enormous: the plate's radius from n / lambda (1800 times
+# too wide) had the OS kill phtest for memory (exit 137, not the alarm's 142), on a Mac
+# other builds share. Every-zone-open replaced it.
 # The fields are split on '|', so neither a target nor a mutant may contain one
 # (conway's trap): no GLSL || here.
 MUTANTS=(
@@ -56,7 +59,7 @@ MUTANTS=(
 	"source/Shaders.cpp|	if( MixAmount <= 0.0 )|	if( MixAmount <= 1.0 )|--alpha|GLSL: Mix 1 hands the clip through, 0 -> 1"
 	"source/Optics.cpp|a.radius = hooks.diameterAsRadius ? diameter : 0.5 * diameter;|a.radius = hooks.diameterAsRadius ? diameter : 0.6 * diameter;|--blur|C++: the hole 1.2 times as wide as asked, 5 -> 6"
 	"source/Optics.cpp|const int zones = 2 * open - 1;|const int zones = 2 * open + 1;|--fresnel|C++: the plate's zones counted two over, - -> +"
-	"source/Optics.cpp|std::sqrt( zones * designWavelength * distance|std::sqrt( zones / designWavelength * distance|--zone|C++: the plate's radius from n / lambda, * -> /"
+	"source/Optics.cpp|for( int n = 1; n <= zones; n += 2 )|for( int n = 1; n <= zones; n += 1 )|--fresnel|C++: every zone open, the plate a plain hole, 2 -> 1"
 	"source/Optics.cpp|std::sqrt( static_cast< double >( n - 1 ) / zones )|std::sqrt( static_cast< double >( n - 2 ) / zones )|--fresnel|C++: each open zone starts a zone early, 1 -> 2"
 	"source/Optics.cpp|return kBandLow[ c ] + ( sample + 0.5 )|return kBandLow[ c ] + ( sample + 1.5 )|--fresnel|C++: each band's wavelengths a sub-band long, 0 -> 1"
 	"source/Optics.cpp|const double u = 2.0 * kPi * R * R / ( wavelength * distance );|const double u = 3.0 * kPi * R * R / ( wavelength * distance );|--fresnel|C++: Lommel's u 1.5 times, 2 -> 3"

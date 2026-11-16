@@ -16,14 +16,14 @@ namespace pinhole
     deletes the framebuffer and the depth renderbuffer, then tests
     `depthBufferID` a second time where it plainly meant `colorTextureID` --
     so the colour texture is leaked on every release (SDK b1afaf9,
-    `FFGLFBO.cpp`). `Destroy()` deletes it first. It matters here: the
-    phosphor store reallocates whenever the raster changes.
+    `FFGLFBO.cpp`). `Destroy()` deletes it first. It matters here: every
+    pyramid level and sum buffer reallocates whenever the raster changes.
 
     **It owns its filtering and its wrap.** Every one of this plugin's buffers
-    is data read texel-for-texel (the shaders' one interpolation, the halo's,
-    is done by hand), so they all ask for Nearest and Clamp. The other answers
-    are kept from millpond, whose class this is, for the next plugin that
-    wants them.
+    is data read texel-for-texel (the shaders' one interpolation, the ring
+    pass's upsample, is done by hand), so they all ask for Nearest and
+    Clamp. The other answers are kept from millpond, whose class this is,
+    for the next plugin that wants them.
 */
 class PassBuffer : public ffglex::FFGLFBO
 {
@@ -46,9 +46,8 @@ public:
 	/// Allocate at this size and format, reusing the existing buffer if it
 	/// already matches. Newly allocated buffers are cleared: a buffer whose
 	/// contents are undefined is not "a bit of noise on the first frame", it is
-	/// whatever texture memory the driver handed back -- and for the phosphor's
-	/// store and the ABC's state, which feed back into themselves, it would
-	/// be light that was never there.
+	/// whatever texture memory the driver handed back: light that was never
+	/// there.
 	bool Ensure( GLsizei requestedWidth, GLsizei requestedHeight, GLint format, Sampling sampling,
 	             Wrap wrap = Wrap::Clamp );
 

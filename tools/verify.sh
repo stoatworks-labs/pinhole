@@ -225,7 +225,7 @@ for bad in "Aperture=Nope" "Diameter=abc" "Diameter=nan"; do
 done
 status=0
 "$PHTEST" --film 1 --size 64x36 --set "Aperture=Zone Plate" >/dev/null 2>&1 || status=$?
-[[ "$status" -eq 0 ]] || fail "--set 'Photocathode=Gen 2' (an option by name) gave exit $status"
+[[ "$status" -eq 0 ]] || fail "--set 'Aperture=Zone Plate' (an option by name) gave exit $status"
 /usr/bin/head -c $(( frame * 20 )) /dev/zero > "$raw"
 set +e
 "$PHTEST" --pipe --size 64x36 < "$raw" 2>/dev/null | /usr/bin/head -c 1 >/dev/null
