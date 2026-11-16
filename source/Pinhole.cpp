@@ -219,8 +219,9 @@ bool PinholePlugin::ensureBuffers( int width, int height )
 	for( int k = 0; k <= kernel.levels; ++k )
 	{
 		ok = ok && level[ k ].Ensure( ceilShift( width, k ), ceilShift( height, k ), GL_RGBA16F, S::Nearest );
+		//A texel of margin all round: see Shaders.h.
 		if( k > 0 )
-			ok = ok && sum[ k ].Ensure( ceilShift( width, k ), ceilShift( height, k ), GL_RGBA16F, S::Nearest );
+			ok = ok && sum[ k ].Ensure( ceilShift( width, k ) + 2, ceilShift( height, k ) + 2, GL_RGBA16F, S::Nearest );
 	}
 	return ok;
 }

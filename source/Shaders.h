@@ -12,7 +12,9 @@
        (Mirror or Black) applied to what lies past level k - 1's edge.
     3. **ring** -- from the coarsest level down: level k's taps (the pattern's
        ring between 8 2^( k - 1 ) and 8 2^k px, in level k's texels) plus a
-       bilinear sample of the level above's sum.
+       bilinear sample of the level above's sum. A sum buffer is its level's
+       size plus a texel of margin all round, so the bilinear sample at the
+       frame's edge reads a sum computed past the edge, not a clamped copy.
     4. **final** -- to the host: the core's taps from level 0 plus a bilinear
        sample of level 1's sum, x cos^4 of the field angle, x 2^Exposure,
        encoded, turned 180 degrees for Obscura; Mix to the clip in code values;

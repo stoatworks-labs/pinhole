@@ -124,11 +124,19 @@ private:
 /// the true pattern, pi u^2.
 Pattern discAiry( double u, double vMax, double dv )
 {
+	//A wrong model, so its cost is capped rather than its accuracy chased:
+	//the harness asks for fine tables, and a Bessel sum per sample at the
+	//true pattern's sampling would take minutes.
+	//At most 4000 samples of at most 4000 terms: past u of about 60 pi the
+	//disc's transfer function is undersampled, which only makes a wrong
+	//model wronger.
+	vMax = std::min( vMax, 2.0 * u + 300.0 );
+	dv   = std::max( { dv, 0.05, vMax / 4000.0 } );
 	Pattern p;
 	p.u               = u;
 	p.dv              = dv;
 	const int count   = static_cast< int >( std::ceil( vMax / dv ) ) + 1;
-	const double step = std::min( 0.002, 0.1 / std::max( u, 1e-9 ) );
+	const double step = std::max( 2.0 / 4000.0, std::min( 0.002, 0.1 / std::max( u, 1e-9 ) ) );
 	const int nq      = static_cast< int >( std::ceil( 2.0 / step ) );
 	std::vector< double > weight( static_cast< size_t >( nq ) );
 	for( int k = 0; k < nq; ++k )
@@ -205,10 +213,19 @@ double Pattern::At( double v ) const
 		return 0.0;
 	const double x = v / dv;
 	const size_t k = static_cast< size_t >( x );
-	if( k + 1 >= e.size() )
-		return k + 1 == e.size() && x == static_cast< double >( k ) ? e.back() : 0.0;
-	const double t = x - static_cast< double >( k );
-	return e[ k ] + ( e[ k + 1 ] - e[ k ] ) * t;
+	const size_t n = e.size();
+	if( k + 1 >= n )
+		return k + 1 == n && x == static_cast< double >( k ) ? e.back() : 0.0;
+	//Catmull-Rom through four samples: linear interpolation at the plugin's
+	//dv missed a big hole's fringes (period about 2 pi in v) by 1% of the
+	//peak. The pattern is even in v, so the sample before the first is the
+	//second; past the last, the line continues.
+	const double t  = x - static_cast< double >( k );
+	const double p0 = k == 0 ? ( n > 1 ? e[ 1 ] : e[ 0 ] ) : e[ k - 1 ];
+	const double p1 = e[ k ], p2 = e[ k + 1 ];
+	const double p3 = k + 2 < n ? e[ k + 2 ] : 2.0 * p2 - p1;
+	const double value = p1 + 0.5 * t * ( p2 - p0 + t * ( 2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * ( 3.0 * ( p1 - p2 ) + p3 - p0 ) ) );
+	return std::max( 0.0, value );
 }
 
 Pattern Monochromatic( const Aperture& aperture, double wavelength, double distance, const Hooks& hooks, double vMax, double dv )
@@ -218,16 +235,20 @@ Pattern Monochromatic( const Aperture& aperture, double wavelength, double dista
 	if( vMax <= 0.0 )
 		vMax = ( aperture.zonePlate ? 8.0 * u : 2.0 * u ) + 300.0;
 	if( dv <= 0.0 )
-		dv = ( aperture.zonePlate || u < 8.0 * kPi ) ? 0.2 : 0.5;
+		dv = ( ( aperture.zonePlate || u < 8.0 * kPi ) ? 0.2 : 0.3 ) / hooks.sampling;
 	if( hooks.discAiry && !aperture.zonePlate )
 		return discAiry( u, vMax, dv );
 
 	//The chirp's u: the geometric one unless a wrong model detunes or drops it.
 	const double uc = hooks.fraunhofer ? 0.0 : u * hooks.chirpScale;
 
-	//p( x ) on [ 0, 1 ] at M + 1 points: fine enough for the chirp (u x dx
-	//below pi / 2) and for v up to vMax (pi / dx).
-	const int M = std::max( { 256, static_cast< int >( std::ceil( vMax / kPi ) ), static_cast< int >( std::ceil( 2.2 * uc / kPi ) ) } );
+	//p( x ) on [ 0, 1 ] at M + 1 points. The trapezoid rule in x is the
+	//error: the chirp's phase moves u x dx a step (kept below pi / 12, where
+	//2.2 u / pi steps, the Nyquist rate, left 1% ripples near a big hole's
+	//edge), and p's square-root edge at x = 1 is only O( dx^1.5 ) accurate,
+	//badly so once v dx nears 1 (kept below pi / 6 at vMax).
+	const int M = static_cast< int >( hooks.sampling
+	                                  * std::max( { 256, static_cast< int >( std::ceil( 6.0 * vMax / kPi ) ), static_cast< int >( std::ceil( 12.0 * uc / kPi ) ) } ) );
 	const double dx = 1.0 / M;
 	size_t N        = 1;
 	const double want = std::max( 2.0 * M + 2.0, 2.0 * kPi / ( dv * dx ) );

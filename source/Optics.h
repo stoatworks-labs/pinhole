@@ -66,6 +66,9 @@ struct Hooks
 	bool oneWavelength    = false;///< every band at 550 nm
 	bool diameterAsRadius = false;///< the hole twice as wide as asked
 	double zoneScale      = 1.0;  ///< every zone radius squared scaled
+	/// Not a wrong model: the harness's finer evaluation (the x samples
+	/// times this, the v step over it), to measure the plugin's own sampling.
+	double sampling = 1.0;
 };
 
 /// One open ring, in units of the aperture's outer radius.
@@ -98,7 +101,7 @@ struct Pattern
 	double dv = 0.0;
 	std::vector< double > e;
 
-	/// Linear between samples, 0 past the end.
+	/// Cubic (Catmull-Rom) between samples, never below 0; 0 past the end.
 	double At( double v ) const;
 	double VMax() const
 	{

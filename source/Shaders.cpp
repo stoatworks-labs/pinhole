@@ -56,8 +56,10 @@ vec3 fetchEdge( sampler2D tex, ivec2 q, ivec2 size )
 )";
 
 /// A level's taps, and the level above's sum sampled bilinearly at a texel's
-/// centre (by hand: the weights are always 1/4 and 3/4, and clamped at the
-/// edge, where the coarser grid already covers the finer one).
+/// centre (by hand: the weights are always 1/4 and 3/4). A sum buffer keeps a
+/// one-texel margin all round -- the level's texel i is the buffer's i + 1 --
+/// so a texel at the frame's edge reads the sum just past it as computed
+/// there, under the edge mode, and not a copy of the edge's own.
 const char* const kGather = R"(
 uniform sampler2D Level;
 uniform ivec2 LevelSize;
@@ -65,7 +67,7 @@ uniform sampler2D Taps;
 uniform int TapRow;
 uniform int TapCount;
 uniform sampler2D Coarser;
-uniform ivec2 CoarserSize;
+uniform ivec2 CoarserSize;// the sum buffer's, margin included
 uniform int HasCoarser;
 
 vec3 gatherTaps( ivec2 at )
@@ -87,7 +89,7 @@ vec3 upsample( ivec2 at )
 	vec2 c     = ( vec2( at ) + 0.5 ) * 0.5 - 0.5;
 	vec2 base  = floor( c );
 	vec2 f     = c - base;
-	ivec2 b    = ivec2( base );
+	ivec2 b    = ivec2( base ) + 1;
 	ivec2 top  = CoarserSize - 1;
 	vec3 c00   = texelFetch( Coarser, clamp( b, ivec2( 0 ), top ), 0 ).rgb;
 	vec3 c10   = texelFetch( Coarser, clamp( b + ivec2( 1, 0 ), ivec2( 0 ), top ), 0 ).rgb;
@@ -129,13 +131,14 @@ void main()
 }
 )";
 
-/// Level k's ring, plus everything coarser.
+/// Level k's ring, plus everything coarser, into a sum buffer with its
+/// margin: the buffer's texel i is the level's i - 1.
 const char* const kRingFragment = R"(
 out vec4 FragColor;
 
 void main()
 {
-	ivec2 at  = ivec2( gl_FragCoord.xy );
+	ivec2 at  = ivec2( gl_FragCoord.xy ) - 1;
 	FragColor = vec4( gatherTaps( at ) + upsample( at ), 1.0 );
 }
 )";
