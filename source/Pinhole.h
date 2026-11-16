@@ -23,6 +23,7 @@ struct PluginHooks
 	bool premultiply   = true; ///< false: the clip's light not weighted by its alpha
 	double cosPower    = 4.0;  ///< the falloff's power of cos
 	bool edgeSwapped   = false;///< Mirror draws Black and Black Mirror
+	bool edgeClamped   = false;///< Mirror repeats the edge pixel instead of reflecting
 	int dropLevel      = -1;   ///< this pyramid level's ring left out (0 the core)
 	bool staleOnResize = false;///< the taps not rebuilt when the raster changes
 	bool mirrorView    = false;///< Obscura mirrors instead of turning

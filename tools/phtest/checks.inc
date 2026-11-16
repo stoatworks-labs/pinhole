@@ -22,6 +22,10 @@ constexpr double kVisible = 1.0 / 1020.0;
 /// Four roundings (level, ring sum, the next ring's sum, the core) bound a
 /// flat field's level.
 constexpr double kHalfFloat = 4.0 * 0.00048828125;
+/// The same light encoded at two field angles and decoded: float32's
+/// rounding in the encode, decode and cos^4 (2^-23 relative each, times the
+/// sRGB curve's steepest slope 12.92), with room: 1e-5.
+constexpr double kFloatCode = 1e-5;
 
 const char* const kChannel[ 3 ] = { "R", "G", "B" };
 
@@ -820,8 +824,9 @@ int runZone( const Perturb& perturb )
 //===========================================================================
 int runEdges( const Perturb& perturb )
 {
-	std::printf( "\n=== edges: the clip's left half white. Mirror: the white runs flat to the frame's edge. Black: the frame's edge is a step to black\n"
-	             "    exactly as the clip's own edge is, so the white strip is symmetric about its middle. A 0.1 mm hole at 50 mm\n" );
+	std::printf( "\n=== edges: the clip's left half white. Mirror: the white runs flat to the frame's edge, and the card comes out as the card with its\n"
+	             "    mirror image appended does. Black: the frame's edge is a step to black exactly as the clip's own edge is, so the white strip is\n"
+	             "    symmetric about its middle. A 0.1 mm hole at 50 mm\n" );
 	for( const Raster& raster : kRasters )
 	{
 		const int w = raster.w, h = raster.h;
@@ -854,6 +859,51 @@ int runEdges( const Perturb& perturb )
 		Check( flat <= kHalfFloat, fmt( "%4dx%-4d Mirror: the white more than the kernel's %.0f px from the clip's edge is flat to the frame's edge: worst %.2g "
 		                                "(tolerance %.2g, four half-float roundings)",
 		                                w, h, support, flat, kHalfFloat ) );
+
+		//Mirror against the clip reflected by hand. The kernel depends on the
+		//raster's height alone (the screen is 24 mm tall), so the card with
+		//its mirror image appended on the right, 2w wide, is blurred with the
+		//same taps: Mirror on the w-wide card must give the left half of
+		//that, where the frame's right edge lies inside the wider one. Exact
+		//only where w is a whole number of the coarsest level's texels (a
+		//reflection about the edge then maps texel blocks onto texel blocks);
+		//otherwise the coarse rings see the reflection up to half a coarse
+		//texel out (AGENTS.md), so the check refuses such a raster.
+		{
+			const Floats scene = buildCard( w, h );
+			Floats doubled( static_cast< size_t >( 2 * w ) * h * 4 );
+			for( int y = 0; y < h; ++y )
+				for( int x = 0; x < 2 * w; ++x )
+				{
+					const int from = x < w ? x : 2 * w - 1 - x;
+					for( int ch = 0; ch < 4; ++ch )
+						doubled[ ( static_cast< size_t >( y ) * 2 * w + x ) * 4 + ch ] = scene[ ( static_cast< size_t >( y ) * w + from ) * 4 + ch ];
+				}
+			Rig one, two;
+			if( !startRig( one, w, h, perturb, &scene ) || !startRig( two, 2 * w, h, perturb, &doubled ) )
+				return 1;
+			for( Rig* r : { &one, &two } )
+			{
+				r->Set( PT_DIAMETER, ParamFromDiameter( 0.1e-3 ) );
+				r->Set( PT_DISTANCE, fp );
+				r->Set( PT_EDGE, static_cast< int >( kMirror ) );
+				if( !r->Render( 1 ) )
+					return 1;
+			}
+			const int levels  = one.plugin.LastKernel().levels;
+			const bool whole  = w % ( 1 << levels ) == 0;
+			const Light mine  = lightOf( one.Output(), w, h, f );
+			const Light by    = lightOf( two.Output(), 2 * w, h, f );
+			double worst      = 0.0;
+			for( int y = 0; y < h; ++y )
+				for( int x = 0; x < w; ++x )
+					for( int ch = 0; ch < 3; ++ch )
+						worst = worse( worst, std::fabs( mine.at( ch, x, y ) - by.at( ch, x, y ) ) );
+			Check( whole && worst <= kFloatCode,
+			       fmt( "%4dx%-4d Mirror: the card against its left half with its mirror image appended (%dx%d, the same taps): worst %.2g (tolerance "
+			            "%.2g, float rounding of the encode at two field angles); %d levels, %d px a texel at the coarsest, %s",
+			            w, h, 2 * w, h, worst, kFloatCode, levels, 1 << levels, whole ? "a whole number across the frame" : "NOT a whole number across the frame: no measurement" ) );
+		}
 
 		rig.Set( PT_EDGE, static_cast< int >( kBlack ) );
 		if( !rig.Render( 1 ) )
@@ -1170,6 +1220,7 @@ int runNegative( bool offlineOnly = false )
 	add( "zone", runZone, "every band at 550 nm", []( Perturb& p ) { p.optics.oneWavelength = true; } );
 	add( "zone", runZone, "every zone radius squared 1.2 times too large", []( Perturb& p ) { p.optics.zoneScale = 1.2; } );
 	add( "edges", runEdges, "Mirror and Black swapped", []( Perturb& p ) { p.edgeSwapped = true; } );
+	add( "edges", runEdges, "Mirror repeating the edge pixel instead of reflecting", []( Perturb& p ) { p.edgeClamped = true; } );
 	add( "energy", runEnergy, "the pyramid's level-1 ring left out", []( Perturb& p ) { p.dropLevel = 1; } );
 	add( "view", runView, "Obscura mirrors instead of turning", []( Perturb& p ) { p.mirrorView = true; } );
 	add( "alpha", runAlpha, "the clip's alpha passed through", []( Perturb& p ) { p.alphaModel = 1; } );

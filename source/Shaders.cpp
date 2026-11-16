@@ -37,7 +37,7 @@ vec3 toCode( vec3 c )
 /// (GLSL's % is undefined for negative operands: the reflection at 0 comes
 /// first.)
 const char* const kEdges = R"(
-uniform int EdgeMode;// 0 Mirror, 1 Black
+uniform int EdgeMode;// 0 Mirror, 1 Black, 2 the edge pixel repeated (a wrong model)
 int fold( int i, int n )
 {
 	if( i < 0 )
@@ -51,6 +51,8 @@ vec3 fetchEdge( sampler2D tex, ivec2 q, ivec2 size )
 		return texelFetch( tex, q, 0 ).rgb;
 	if( EdgeMode == 1 )
 		return vec3( 0.0 );
+	if( EdgeMode == 2 )
+		return texelFetch( tex, clamp( q, ivec2( 0 ), size - 1 ), 0 ).rgb;
 	return texelFetch( tex, ivec2( fold( q.x, size.x ), fold( q.y, size.y ) ), 0 ).rgb;
 }
 )";

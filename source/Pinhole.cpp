@@ -243,7 +243,7 @@ void PinholePlugin::render( const FFGLTextureStruct* input, const GLint* hostVie
 	}
 	glBindVertexArray( vao );
 	const int K        = kernel.levels;
-	const int edgeMode = ( s.edge == kBlack ) != hooks.edgeSwapped ? 1 : 0;
+	const int edgeMode = ( s.edge == kBlack ) != hooks.edgeSwapped ? 1 : ( hooks.edgeClamped ? 2 : 0 );
 	auto size          = [ & ]( const PassBuffer& b, GLint location ) {
         glUniform2i( location, static_cast< GLint >( b.GetWidth() ), static_cast< GLint >( b.GetHeight() ) );
 	};
