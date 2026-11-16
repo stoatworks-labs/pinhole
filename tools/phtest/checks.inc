@@ -1017,10 +1017,15 @@ int runAlpha( const Perturb& perturb )
 		rig.Set( PT_MIX, 1.0f );
 		if( !rig.Render( 1 ) )
 			return 1;
-		const size_t under = differing( rig.Output(), atOne );
-		Check( worst[ 0 ] <= 1e-6 && worst[ 1 ] <= 1e-6 && through == 0 && under == 0,
+		//Not bit for bit: Apple's software renderer does not repeat itself to
+		//the last bit (the same frame twice differed by 1e-10 in one value).
+		const Floats blackOut = rig.Output();
+		double under          = 0.0;
+		for( size_t i = 0; i < blackOut.size(); ++i )
+			under = worse( under, std::fabs( static_cast< double >( blackOut[ i ] ) - atOne[ i ] ) );
+		Check( worst[ 0 ] <= 1e-6 && worst[ 1 ] <= 1e-6 && through == 0 && under <= 1e-6,
 		       fmt( "%4dx%-4d alpha at Mix 1 off mix( a, 1, Mix ) by %.2g, at Mix 0.5 by %.2g (tolerance 1e-6); white against black under alpha 0 at Mix 1: "
-		            "%zu values differ (bit-exact); Mix 0: %zu values differ from the clip (bit-exact)",
+		            "worst %.2g (tolerance 1e-6); Mix 0: %zu values differ from the clip (bit-exact)",
 		            w, h, worst[ 0 ], worst[ 1 ], under, through ) );
 	}
 	return Verdict();

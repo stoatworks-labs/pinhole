@@ -181,7 +181,11 @@ void main()
 	float fall = pow( c2, 0.5 * CosPower );
 	vec3 rgb   = toCode( light * fall * ExposureGain );
 	float outA = AlphaModel == 1 ? src.a : 1.0;
-	FragColor  = vec4( mix( src.rgb, rgb, MixAmount ), mix( src.a, outA, MixAmount ) );
+	// Written out rather than mix(): Apple's software renderer computes mix as
+	// x + ( y - x ) a, which at Mix 1 lets the clip's colour under a
+	// transparent pixel through in the last bit.
+	float keep = 1.0 - MixAmount;
+	FragColor  = vec4( src.rgb * keep + rgb * MixAmount, src.a * keep + outA * MixAmount );
 }
 )";
 
