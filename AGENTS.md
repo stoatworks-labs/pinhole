@@ -189,6 +189,12 @@ Each claim, its number and its tolerance's source:
   Zone plates of 1–16 open zones: the axis against (2M)² to 1e-8, the other wavelengths
   against the rings' sum to 3.9e-5 of (2M)², the light against the open area to 1.7e-4 (1/1020
   each). The plugin's sampling against four times as fine: 5.4e-4 of the peak (1/1020).
+  The cumulative light against 2-point Gauss–Legendre on the same profiles: 9.8e-15 of the
+  open area (tolerance 1e-9, double rounding over 200,000 segments). The taps' total against
+  the cumulative at the support: 3.9e-4 (tolerance 2e-3, `kTapRule`: the taps integrate the
+  angle inside each square by the midpoint rule, first order where r crosses a side, so the
+  tolerance is the measured worst with room, chosen rather than derived). Each band's six
+  wavelengths against the sub-band midpoints: 0 (1e-12).
 - **The optimum** (`--fresnel` on the builder, `--optimum` off the picture). The builder's
   area width is least at u = 1.6878π against Mielenz's 1.7π, tolerance ±0.05π (his two
   figures). Off the picture at 500 mm, 1280×720: −1.03% (R), −1.19% (G), −1.45% (B) from
