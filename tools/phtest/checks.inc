@@ -22,10 +22,18 @@ constexpr double kVisible = 1.0 / 1020.0;
 /// Four roundings (level, ring sum, the next ring's sum, the core) bound a
 /// flat field's level.
 constexpr double kHalfFloat = 4.0 * 0.00048828125;
-/// The same light encoded at two field angles and decoded: float32's
-/// rounding in the encode, decode and cos^4 (2^-23 relative each, times the
-/// sRGB curve's steepest slope 12.92), with room: 1e-5.
+/// Below 2^-14 a half float is denormal, in steps of 2^-24: four of them.
+constexpr double kHalfDenormal = 4.0 * 5.9604644775390625e-8;
+/// The same light through the same texels in two renders: float32's
+/// rounding (2^-23 relative a step, times the sRGB curve's steepest slope
+/// 12.92) for a renderer that does not repeat itself to the last bit
+/// (Apple's software renderer), with room: 1e-5.
 constexpr double kFloatCode = 1e-5;
+/// The taps' weights integrate the angle inside each square along r by the
+/// midpoint rule (at least 8 steps of at most 1/32 texel); the angle has
+/// square-root kinks where r crosses a side, so the rule is first order
+/// there. Set from the measured worst with room (AGENTS.md): 2e-3.
+constexpr double kTapRule = 2e-3;
 
 const char* const kChannel[ 3 ] = { "R", "G", "B" };
 
@@ -428,14 +436,52 @@ int runFresnel( const Perturb& perturb )
 			{ "4 zones for 550 nm at 50 mm", optics::MakeZonePlate( 4, 550e-9, 50e-3, hooks ), 50e-3 },
 			{ "16 zones for 400 nm at 500 mm", optics::MakeZonePlate( 16, 400e-9, 500e-3, hooks ), 500e-3 },
 		};
-		double worst = 0.0;
-		std::string lines;
+		double worst = 0.0, worstCum = 0.0, worstTaps = 0.0;
+		std::string lines, tapLines;
 		for( const Case& c : cases )
 		{
 			const double pixel        = hFrame / 720.0;
 			const optics::Profile own = optics::BuildProfile( c.a, c.f, pixel, 720.0, hooks );
 			const optics::Profile fin = optics::BuildProfile( c.a, c.f, pixel, 720.0, finer( hooks ) );
 			double here               = 0.0;
+			//The cumulative the taps are cut from: the integral of 2 pi r e( r )
+			//over the profile's linear interpolant, by 2-point Gauss-Legendre
+			//a segment (exact: r e( r ) is quadratic there), at every sample
+			//and at every segment's middle (CumAt between samples).
+			for( int ch = 0; ch < 3; ++ch )
+			{
+				const std::vector< double >& ev = own.e[ ch ];
+				double sum                      = 0.0;
+				auto piece = [ & ]( size_t k, double r0, double r1 ) {
+					const double g = 0.5773502691896257645;
+					double s       = 0.0;
+					for( const double x : { -g, g } )
+					{
+						const double r = 0.5 * ( r0 + r1 ) + 0.5 * ( r1 - r0 ) * x;
+						const double e = ev[ k ] + ( ev[ k + 1 ] - ev[ k ] ) * ( r - k * own.dr ) / own.dr;
+						s += 0.5 * ( r1 - r0 ) * 2.0 * hPi * r * e;
+					}
+					return s;
+				};
+				for( size_t k = 0; k + 1 < ev.size(); ++k )
+				{
+					const double r0 = k * own.dr, r1 = ( k + 1 ) * own.dr, rm = 0.5 * ( r0 + r1 );
+					worstCum        = worse( worstCum, std::fabs( own.CumAt( ch, rm ) - ( sum + piece( k, r0, rm ) ) ) / own.total );
+					sum += piece( k, r0, r1 );
+					worstCum = worse( worstCum, std::fabs( own.cum[ ch ][ k + 1 ] - sum ) / own.total );
+				}
+			}
+			//The pyramid's taps: every texel square inside its ring, the
+			//rings tiling the disc of the support, so before normalising the
+			//weights add up to the light inside the support.
+			{
+				const optics::Kernel kernel = optics::BuildKernel( own );
+				double off                  = 0.0;
+				for( int ch = 0; ch < 3; ++ch )
+					off = worse( off, std::fabs( kernel.sum[ ch ] / own.CumAt( ch, kernel.support ) - 1.0 ) );
+				worstTaps = worse( worstTaps, off );
+				tapLines += fmt( " %s %.1e (%d levels);", c.name, off, kernel.levels );
+			}
 			for( int ch = 0; ch < 3; ++ch )
 			{
 				const double peak = *std::max_element( fin.e[ ch ].begin(), fin.e[ ch ].end() );
@@ -453,6 +499,12 @@ int runFresnel( const Perturb& perturb )
 		Check( worst <= kVisible, fmt( "the plugin's own sampling: each band-mean profile at 720 lines against four times the sampling, worst %.2g of its peak "
 		                               "(tolerance %.2g).%s",
 		                               worst, kVisible, lines.c_str() ) );
+		Check( worstCum <= 1e-9, fmt( "the same profiles' cumulative light against 2-point Gauss-Legendre on their linear interpolant, at every sample and every "
+		                              "segment's middle: worst %.2g of the open area (tolerance 1e-9, double rounding over 200,000 segments)",
+		                              worstCum ) );
+		Check( worstTaps <= kTapRule, fmt( "the pyramid's taps before normalising against the light inside the support: worst %.2g relative (tolerance %.2g, "
+		                                   "the arc-length midpoint rule).%s",
+		                                   worstTaps, kTapRule, tapLines.c_str() ) );
 	}
 
 	//3. The Airy limit: a hole of u = 0.01, normalised at the centre.
@@ -576,10 +628,15 @@ int runFresnel( const Perturb& perturb )
 				worst = worse( worst, x );
 		}
 		const double optimum = std::sqrt( 2.0 * 1.7 * 550e-9 * 50e-3 );
-		Check( worst <= 1e-6 && std::fabs( DefaultDiameter() / optimum - 1.0 ) <= 1e-9,
+		//Each band's wavelengths: the midpoints of six equal sub-bands.
+		double band = 0.0;
+		for( int ch = 0; ch < 3; ++ch )
+			for( int s = 0; s < 6; ++s )
+				band = worse( band, std::fabs( optics::Wavelength( ch, s, hooks ) / ( hBandLow[ ch ] + ( s + 0.5 ) / 6.0 * ( hBandHigh[ ch ] - hBandLow[ ch ] ) ) - 1.0 ) );
+		Check( worst <= 1e-6 && std::fabs( DefaultDiameter() / optimum - 1.0 ) <= 1e-9 && band <= 1e-12,
 		       fmt( "the conversions against the spec's ranges, both ways: worst %.2g (tolerance 1e-6, float); the default Diameter %.4f mm is "
-		            "1.844 sqrt( 550 nm x 50 mm )",
-		            worst, DefaultDiameter() * 1e3 ) );
+		            "1.844 sqrt( 550 nm x 50 mm ); each band's six wavelengths against its sub-bands' midpoints: worst %.2g (tolerance 1e-12)",
+		            worst, DefaultDiameter() * 1e3, band ) );
 	}
 
 	//Not a check: how far the disc-plus-Airy shortcut is from the pattern.
@@ -824,103 +881,167 @@ int runZone( const Perturb& perturb )
 //===========================================================================
 int runEdges( const Perturb& perturb )
 {
-	std::printf( "\n=== edges: the clip's left half white. Mirror: the white runs flat to the frame's edge, and the card comes out as the card with its\n"
-	             "    mirror image appended does. Black: the frame's edge is a step to black exactly as the clip's own edge is, so the white strip is\n"
-	             "    symmetric about its middle. A 0.1 mm hole at 50 mm\n" );
+	std::printf( "\n=== edges: Mirror -- a white half runs flat to the frame's edge; the card comes out as the middle of the card with its mirror images\n"
+	             "    on both sides does (left and right, a 0.1 mm hole at 50 mm); the card upside down comes out upside down (top and bottom, a 0.15 mm\n"
+	             "    hole, whose coarsest texels divide the height). Black -- a white strip against each edge is symmetric about its middle: the\n"
+	             "    frame's edge is a step to black exactly as the clip's own edge is\n" );
 	for( const Raster& raster : kRasters )
 	{
 		const int w = raster.w, h = raster.h;
-		Floats card = grey( w, h, 0.0 );
-		for( int y = 0; y < h; ++y )
-			for( int x = 0; x < w / 2; ++x )
-			{
-				float* o = &card[ ( static_cast< size_t >( y ) * w + x ) * 4 ];
-				o[ 0 ] = o[ 1 ] = o[ 2 ] = 1.0f;
-			}
-		Rig rig;
-		if( !startRig( rig, w, h, perturb, &card ) )
-			return 1;
-		rig.Set( PT_DIAMETER, ParamFromDiameter( 0.1e-3 ) );
 		const float fp = ParamFromDistance( 50e-3 );
-		rig.Set( PT_DISTANCE, fp );
 		const double f = hDistance( fp );
+		auto render    = [ & ]( Rig& rig, int width, const Floats& picture, double d, int edge ) {
+			if( !startRig( rig, width, h, perturb, &picture ) )
+				return false;
+			rig.Set( PT_DIAMETER, ParamFromDiameter( d ) );
+			rig.Set( PT_DISTANCE, fp );
+			rig.Set( PT_EDGE, edge );
+			return rig.Render( 1 );
+		};
+		auto at = []( Floats& card, int width, int x, int y ) { return &card[ ( static_cast< size_t >( y ) * width + x ) * 4 ]; };
 
-		rig.Set( PT_EDGE, static_cast< int >( kMirror ) );
-		if( !rig.Render( 1 ) )
-			return 1;
-		const double support = rig.plugin.LastKernel().support;
-		const int reach      = static_cast< int >( std::ceil( support ) ) + 1;
-		Light light          = lightOf( rig.Output(), w, h, f );
-		double flat          = 0.0;
-		for( int y = 0; y < h; ++y )
-			for( int x = 0; x < w / 2 - reach; ++x )
-				for( int ch = 0; ch < 3; ++ch )
-					flat = worse( flat, std::fabs( light.at( ch, x, y ) - 1.0 ) );
-		Check( flat <= kHalfFloat, fmt( "%4dx%-4d Mirror: the white more than the kernel's %.0f px from the clip's edge is flat to the frame's edge: worst %.2g "
-		                                "(tolerance %.2g, four half-float roundings)",
-		                                w, h, support, flat, kHalfFloat ) );
+		//1. Mirror: the left half white, flat to the frame's edge.
+		{
+			Floats card = grey( w, h, 0.0 );
+			for( int y = 0; y < h; ++y )
+				for( int x = 0; x < w / 2; ++x )
+				{
+					float* o = at( card, w, x, y );
+					o[ 0 ] = o[ 1 ] = o[ 2 ] = 1.0f;
+				}
+			Rig rig;
+			if( !render( rig, w, card, 0.1e-3, kMirror ) )
+				return 1;
+			const double support = rig.plugin.LastKernel().support;
+			const int reach      = static_cast< int >( std::ceil( support ) ) + 1;
+			const Light light    = lightOf( rig.Output(), w, h, f );
+			double flat          = 0.0;
+			for( int y = 0; y < h; ++y )
+				for( int x = 0; x < w / 2 - reach; ++x )
+					for( int ch = 0; ch < 3; ++ch )
+						flat = worse( flat, std::fabs( light.at( ch, x, y ) - 1.0 ) );
+			Check( flat <= kHalfFloat, fmt( "%4dx%-4d Mirror: the white more than the kernel's %.0f px from the clip's edge is flat to the frame's edge: worst %.2g "
+			                                "(tolerance %.2g, four half-float roundings)",
+			                                w, h, support, flat, kHalfFloat ) );
+		}
 
-		//Mirror against the clip reflected by hand. The kernel depends on the
-		//raster's height alone (the screen is 24 mm tall), so the card with
-		//its mirror image appended on the right, 2w wide, is blurred with the
-		//same taps: Mirror on the w-wide card must give the left half of
-		//that, where the frame's right edge lies inside the wider one. Exact
-		//only where w is a whole number of the coarsest level's texels (a
-		//reflection about the edge then maps texel blocks onto texel blocks);
-		//otherwise the coarse rings see the reflection up to half a coarse
-		//texel out (AGENTS.md), so the check refuses such a raster.
+		//2. Mirror against the clip reflected by hand, left and right. The
+		//   kernel depends on the raster's height alone (the screen is 24 mm
+		//   tall), so the card with its mirror image on each side, 3w wide, is
+		//   blurred with the same taps: Mirror on the w-wide card must give
+		//   the middle third of that. Exact (the same texels, in the same
+		//   order) only where w is a whole number of the coarsest level's
+		//   texels: a reflection about the edge then maps texel blocks onto
+		//   texel blocks. Otherwise the coarse rings see the reflection up to
+		//   half a coarse texel out (AGENTS.md), so such a raster is refused.
 		{
 			const Floats scene = buildCard( w, h );
-			Floats doubled( static_cast< size_t >( 2 * w ) * h * 4 );
+			Floats tripled( static_cast< size_t >( 3 * w ) * h * 4 );
 			for( int y = 0; y < h; ++y )
-				for( int x = 0; x < 2 * w; ++x )
+				for( int x = 0; x < 3 * w; ++x )
 				{
-					const int from = x < w ? x : 2 * w - 1 - x;
+					const int from = x < w ? w - 1 - x : x < 2 * w ? x - w : 3 * w - 1 - x;
 					for( int ch = 0; ch < 4; ++ch )
-						doubled[ ( static_cast< size_t >( y ) * 2 * w + x ) * 4 + ch ] = scene[ ( static_cast< size_t >( y ) * w + from ) * 4 + ch ];
+						tripled[ ( static_cast< size_t >( y ) * 3 * w + x ) * 4 + ch ] = scene[ ( static_cast< size_t >( y ) * w + from ) * 4 + ch ];
 				}
-			Rig one, two;
-			if( !startRig( one, w, h, perturb, &scene ) || !startRig( two, 2 * w, h, perturb, &doubled ) )
+			Rig one, three;
+			if( !render( one, w, scene, 0.1e-3, kMirror ) || !render( three, 3 * w, tripled, 0.1e-3, kMirror ) )
 				return 1;
-			for( Rig* r : { &one, &two } )
-			{
-				r->Set( PT_DIAMETER, ParamFromDiameter( 0.1e-3 ) );
-				r->Set( PT_DISTANCE, fp );
-				r->Set( PT_EDGE, static_cast< int >( kMirror ) );
-				if( !r->Render( 1 ) )
-					return 1;
-			}
-			const int levels  = one.plugin.LastKernel().levels;
-			const bool whole  = w % ( 1 << levels ) == 0;
-			const Light mine  = lightOf( one.Output(), w, h, f );
-			const Light by    = lightOf( two.Output(), 2 * w, h, f );
-			double worst      = 0.0;
+			const int levels = one.plugin.LastKernel().levels;
+			const bool whole = w % ( 1 << levels ) == 0;
+			const Light mine = lightOf( one.Output(), w, h, f );
+			const Light by   = lightOf( three.Output(), 3 * w, h, f );
+			double worst     = 0.0;
 			for( int y = 0; y < h; ++y )
 				for( int x = 0; x < w; ++x )
 					for( int ch = 0; ch < 3; ++ch )
-						worst = worse( worst, std::fabs( mine.at( ch, x, y ) - by.at( ch, x, y ) ) );
+						worst = worse( worst, std::fabs( mine.at( ch, x, y ) - by.at( ch, w + x, y ) ) );
 			Check( whole && worst <= kFloatCode,
-			       fmt( "%4dx%-4d Mirror: the card against its left half with its mirror image appended (%dx%d, the same taps): worst %.2g (tolerance "
-			            "%.2g, float rounding of the encode at two field angles); %d levels, %d px a texel at the coarsest, %s",
-			            w, h, 2 * w, h, worst, kFloatCode, levels, 1 << levels, whole ? "a whole number across the frame" : "NOT a whole number across the frame: no measurement" ) );
+			       fmt( "%4dx%-4d Mirror, left and right: the card against the middle of the card between its mirror images (%dx%d, the same taps): worst %.2g "
+			            "(tolerance %.2g, float rounding); %d levels, %d px a texel at the coarsest, %s",
+			            w, h, 3 * w, h, worst, kFloatCode, levels, 1 << levels,
+			            whole ? "a whole number across the frame" : "NOT a whole number across the frame: no measurement" ) );
 		}
 
-		rig.Set( PT_EDGE, static_cast< int >( kBlack ) );
-		if( !rig.Render( 1 ) )
-			return 1;
-		light            = lightOf( rig.Output(), w, h, f );
-		double asymmetry = 0.0, dip = 1.0;
-		for( int y = 0; y < h; ++y )
-			for( int x = 0; x < w / 2; ++x )
+		//3. Mirror, top and bottom: the card upside down must come out upside
+		//   down. Not the same texels this time (each block's four values are
+		//   added in another order), so to four half-float roundings; and only
+		//   where the coarsest texels divide the height, as above.
+		{
+			const Floats scene = buildCard( w, h );
+			Floats flipped( scene.size() );
+			for( int y = 0; y < h; ++y )
+				std::copy_n( &scene[ static_cast< size_t >( h - 1 - y ) * w * 4 ], static_cast< size_t >( w ) * 4, &flipped[ static_cast< size_t >( y ) * w * 4 ] );
+			Rig up, down;
+			if( !render( up, w, scene, 0.15e-3, kMirror ) || !render( down, w, flipped, 0.15e-3, kMirror ) )
+				return 1;
+			const int levels = up.plugin.LastKernel().levels;
+			const bool whole = h % ( 1 << levels ) == 0;
+			const Light a    = lightOf( up.Output(), w, h, f );
+			const Light b    = lightOf( down.Output(), w, h, f );
+			double worst     = 0.0;
+			for( int y = 0; y < h; ++y )
+				for( int x = 0; x < w; ++x )
+					for( int ch = 0; ch < 3; ++ch )
+						worst = worse( worst, std::fabs( a.at( ch, x, y ) - b.at( ch, x, h - 1 - y ) ) );
+			Check( whole && worst <= kHalfFloat,
+			       fmt( "%4dx%-4d Mirror, top and bottom: the card upside down against the card's picture upside down: worst %.2g (tolerance %.2g, four "
+			            "half-float roundings); %d levels, %d px a texel at the coarsest, %s",
+			            w, h, worst, kHalfFloat, levels, 1 << levels,
+			            whole ? "a whole number up the frame" : "NOT a whole number up the frame: no measurement" ) );
+		}
+
+		//4. Black: a white strip against each edge in turn, symmetric about
+		//   its own middle. The strip's width is a whole number of 32 px
+		//   texels, so the reflection about its middle maps the pyramid's
+		//   texels onto texels wherever the frame's edge falls.
+		{
+			const int sx = ( w / 2 ) & ~31, sy = ( h / 2 ) & ~31;
+			const char* names[ 4 ] = { "left", "right", "bottom", "top" };
+			double asymmetry[ 4 ] = {}, dip[ 4 ] = { 1.0, 1.0, 1.0, 1.0 };
+			for( int side = 0; side < 4; ++side )
+			{
+				auto inStrip = [ & ]( int x, int y ) {
+					return side == 0 ? x < sx : side == 1 ? x >= w - sx : side == 2 ? y < sy : y >= h - sy;
+				};
+				Floats card = grey( w, h, 0.0 );
+				for( int y = 0; y < h; ++y )
+					for( int x = 0; x < w; ++x )
+						if( inStrip( x, y ) )
+						{
+							float* o = at( card, w, x, y );
+							o[ 0 ] = o[ 1 ] = o[ 2 ] = 1.0f;
+						}
+				Rig rig;
+				if( !render( rig, w, card, 0.1e-3, kBlack ) )
+					return 1;
+				const Light light = lightOf( rig.Output(), w, h, f );
+				for( int y = 0; y < h; ++y )
+					for( int x = 0; x < w; ++x )
+					{
+						if( !inStrip( x, y ) )
+							continue;
+						//The pixel's mirror image about the strip's middle.
+						const int mx = side == 0 ? sx - 1 - x : side == 1 ? 2 * w - sx - 1 - x : x;
+						const int my = side == 2 ? sy - 1 - y : side == 3 ? 2 * h - sy - 1 - y : y;
+						for( int ch = 0; ch < 3; ++ch )
+							asymmetry[ side ] = worse( asymmetry[ side ], std::fabs( light.at( ch, x, y ) - light.at( ch, mx, my ) ) );
+					}
+				const int ex = side == 0 ? 0 : side == 1 ? w - 1 : w / 2, ey = side == 2 ? 0 : side == 3 ? h - 1 : h / 2;
 				for( int ch = 0; ch < 3; ++ch )
-				{
-					asymmetry = worse( asymmetry, std::fabs( light.at( ch, x, y ) - light.at( ch, w / 2 - 1 - x, y ) ) );
-					dip       = std::min( dip, light.at( ch, 0, h / 2 ) );
-				}
-		Check( asymmetry <= kVisible && dip < 0.75,
-		       fmt( "%4dx%-4d Black: the white strip against its mirror image about its middle: worst %.2g (tolerance %.2g, a quarter of an 8-bit code "
-		            "step); the frame's edge falls to %.3f",
-		            w, h, asymmetry, kVisible, dip ) );
+					dip[ side ] = std::min( dip[ side ], light.at( ch, ex, ey ) );
+			}
+			bool ok = true;
+			std::string line;
+			for( int side = 0; side < 4; ++side )
+			{
+				ok = ok && asymmetry[ side ] <= kVisible && dip[ side ] < 0.75;
+				line += fmt( " %s %.2g (edge %.3f);", names[ side ], asymmetry[ side ], dip[ side ] );
+			}
+			Check( ok, fmt( "%4dx%-4d Black: a white strip %d px wide (%d px tall) against each edge, against its mirror image about its middle:%s tolerance %.2g, a "
+			                "quarter of an 8-bit code step; each frame edge must fall below 0.75",
+			                w, h, sx, sy, line.c_str(), kVisible ) );
+		}
 	}
 	return Verdict();
 }
@@ -930,13 +1051,27 @@ int runEdges( const Perturb& perturb )
 //===========================================================================
 int runEnergy( const Perturb& perturb )
 {
-	std::printf( "\n=== energy: a 9 x 9 white square in the middle: the picture's light, cos^4 divided out, is the clip's (the kernel sums to one)\n" );
+	std::printf( "\n=== energy: a 9 x 9 white square: the picture's light, cos^4 divided out, is the clip's (the kernel sums to one); it is round (the\n"
+	             "    picture is symmetric under swapping x and y about the square's centre); and its centroid is where the pyramid puts it: each ring's\n"
+	             "    share of the light at the centroid of the square's light gathered into that level's texels (a coarse level sees a texel's light at\n"
+	             "    its centre; bilinear upsampling keeps a centroid). The square's corner sits on a 32 px texel in x and y\n" );
 	for( const Raster& raster : kRasters )
 	{
 		const int w = raster.w, h = raster.h;
+		const int x0 = ( w / 2 ) & ~31, y0 = ( h / 2 ) & ~31;
+		//The square's centroid as level k holds it: each pixel's light at the
+		//centre of its 2^k px texel (x0 and y0 are whole 32 px texels, so the
+		//same offset in x and y).
+		auto heldAt = [ & ]( int k ) {
+			const int s = 1 << k;
+			double sum  = 0.0;
+			for( int i = 0; i < 9; ++i )
+				sum += ( std::floor( static_cast< double >( i ) / s ) + 0.5 ) * s - 0.5;
+			return sum / 9.0;
+		};
 		Floats card = grey( w, h, 0.0 );
-		for( int y = h / 2 - 4; y <= h / 2 + 4; ++y )
-			for( int x = w / 2 - 4; x <= w / 2 + 4; ++x )
+		for( int y = y0; y < y0 + 9; ++y )
+			for( int x = x0; x < x0 + 9; ++x )
 			{
 				float* o = &card[ ( static_cast< size_t >( y ) * w + x ) * 4 ];
 				o[ 0 ] = o[ 1 ] = o[ 2 ] = 1.0f;
@@ -959,23 +1094,60 @@ int runEnergy( const Perturb& perturb )
 				rig.Set( PT_DIAMETER, ParamFromDiameter( c.d ) );
 			if( !rig.Render( 1 ) )
 				return 1;
-			const double support = rig.plugin.LastKernel().support;
-			const Light light    = lightOf( rig.Output(), w, h, hDistance( ParamFromDistance( 50e-3 ) ) );
-			double worst         = 0.0;
+			const optics::Kernel& kernel = rig.plugin.LastKernel();
+			const double support         = kernel.support;
+			const Light light            = lightOf( rig.Output(), w, h, hDistance( ParamFromDistance( 50e-3 ) ) );
+			double worst = 0.0, shift = 0.0, swap = 0.0, moved = 0.0;
 			std::string line;
 			for( int ch = 0; ch < 3; ++ch )
 			{
-				double total = 0.0;
-				for( const double v : light.c[ ch ] )
-					total += v;
+				double total = 0.0, mx = 0.0, my = 0.0, peak = 0.0;
+				for( int y = 0; y < h; ++y )
+					for( int x = 0; x < w; ++x )
+					{
+						const double v = light.at( ch, x, y );
+						total += v;
+						mx += v * x;
+						my += v * y;
+						peak = std::max( peak, v );
+					}
 				worst = worse( worst, std::fabs( total / 81.0 - 1.0 ) );
+				//Each level's share of the light, from the taps the plugin built.
+				double expect = 0.0, shares = 0.0;
+				for( int k = 0; k <= kernel.levels; ++k )
+				{
+					double share = 0.0;
+					for( const optics::Tap& tap : kernel.taps[ k ] )
+						share += tap.w[ ch ];
+					expect += share * heldAt( k );
+					shares += share;
+				}
+				expect /= shares;
+				shift = worse( shift, std::hypot( mx / total - x0 - expect, my / total - y0 - expect ) );
+				moved = std::max( moved, expect - 4.0 );
 				line += fmt( " %s %.5f", kChannel[ ch ], total / 81.0 );
+				//The swap about the square's centre, inside the frame.
+				const int reach = static_cast< int >( std::ceil( support ) ) + 6;
+				for( int dy = -reach; dy <= reach; ++dy )
+					for( int dx = -reach; dx <= reach; ++dx )
+					{
+						const int ax = x0 + 4 + dx, ay = y0 + 4 + dy, bx = x0 + 4 + dy, by = y0 + 4 + dx;
+						if( ax < 0 || ay < 0 || bx < 0 || by < 0 || ax >= w || ay >= h || bx >= w || by >= h )
+							continue;
+						const double a = light.at( ch, ax, ay ), b = light.at( ch, bx, by );
+						const double allowed = kHalfFloat * std::max( a, b ) + kHalfDenormal;
+						swap = worse( swap, std::fabs( a - b ) / allowed );
+					}
 			}
-			const bool inside = support + 4.5 < 0.5 * h;
-			Check( worst <= kHalfFloat && inside, fmt( "%4dx%-4d %s (kernel %.0f px, %d levels): the picture's light over the clip's:%s; worst %.2g (tolerance %.2g, "
-			                                           "four half-float roundings)%s",
-			                                           w, h, c.name, support, rig.plugin.LastKernel().levels, line.c_str(), worst, kHalfFloat,
-			                                           inside ? "" : " -- the kernel reaches the frame's edge, so light left it" ) );
+			const double allowShift = kHalfFloat * ( support + 4.5 );
+			const bool inside       = x0 - support > 0.0 && y0 - support > 0.0 && x0 + 8 + support < w && y0 + 8 + support < h;
+			Check( worst <= kHalfFloat && shift <= allowShift && swap <= 1.0 && inside,
+			       fmt( "%4dx%-4d %s (kernel %.0f px, %d levels): the picture's light over the clip's:%s; worst %.2g (tolerance %.2g, four half-float "
+			            "roundings); the centroid %.2g px from where the pyramid puts it, %.3f px up and right of the square's centre (tolerance %.2g, the same "
+			            "roundings over the kernel's reach); x and y swapped: worst %.2f of the allowance (four half-float roundings of the larger value, plus "
+			            "four half-float denormal steps)%s",
+			            w, h, c.name, support, kernel.levels, line.c_str(), worst, kHalfFloat, shift, moved, allowShift, swap,
+			            inside ? "" : " -- the kernel reaches the frame's edge, so light left it" ) );
 		}
 	}
 	return Verdict();
@@ -1019,8 +1191,9 @@ int runView( const Perturb& perturb )
 //===========================================================================
 int runAlpha( const Perturb& perturb )
 {
-	std::printf( "\n=== alpha: output alpha = mix( a, 1, Mix ); white under transparent pixels changes nothing (the light is weighted by alpha before the\n"
-	             "    blur); Mix 0 hands the clip through\n" );
+	std::printf( "\n=== alpha: output alpha = mix( a, 1, Mix ); the light is weighted by alpha before the blur -- white under transparent pixels changes\n"
+	             "    nothing, and grey under an alpha ramp comes out as the grey's light times the ramp (a symmetric kernel passes a straight line\n"
+	             "    unchanged); Mix 0 hands the clip through\n" );
 	for( const Raster& raster : kRasters )
 	{
 		const int w = raster.w, h = raster.h;
@@ -1043,6 +1216,8 @@ int runAlpha( const Perturb& perturb )
 		if( !startRig( rig, w, h, perturb, &white ) )
 			return 1;
 		double worst[ 2 ]      = {};
+		double ramp            = 0.0;
+		const double allowRamp = kHalfFloat + 0.5 / 255.0 * linearOf( 0.5 );
 		const float mixes[ 2 ] = { 1.0f, 0.5f };
 		Floats atOne;
 		for( int k = 0; k < 2; ++k )
@@ -1053,6 +1228,19 @@ int runAlpha( const Perturb& perturb )
 			const Floats out = rig.Output();
 			if( k == 0 )
 				atOne = out;
+			if( k == 0 )
+			{
+				//The ramp, a( x ) = 2x / w - 1 on the right half, in 8-bit steps:
+				//away from its kink at w / 2 and from the frame's edge the
+				//picture's light is lin( 0.5 ) a( x ), to the steps' half code.
+				const int reach   = static_cast< int >( std::ceil( rig.plugin.LastKernel().support ) ) + 1;
+				const Light light = lightOf( out, w, h, hDistance( ParamFromDistance( 50e-3 ) ) );
+				const double grey = linearOf( 0.5 );
+				for( int y = 0; y < h; ++y )
+					for( int x = w / 2 + reach; x < w - reach; ++x )
+						for( int ch = 0; ch < 3; ++ch )
+							ramp = worse( ramp, std::fabs( light.at( ch, x, y ) - grey * ( 2.0 * x / w - 1.0 ) ) );
+			}
 			for( size_t p = 0; p < out.size() / 4; ++p )
 			{
 				const double a = white[ 4 * p + 3 ];
@@ -1073,10 +1261,11 @@ int runAlpha( const Perturb& perturb )
 		double under          = 0.0;
 		for( size_t i = 0; i < blackOut.size(); ++i )
 			under = worse( under, std::fabs( static_cast< double >( blackOut[ i ] ) - atOne[ i ] ) );
-		Check( worst[ 0 ] <= 1e-6 && worst[ 1 ] <= 1e-6 && through == 0 && under <= 1e-6,
+		Check( worst[ 0 ] <= 1e-6 && worst[ 1 ] <= 1e-6 && through == 0 && under <= 1e-6 && ramp <= allowRamp,
 		       fmt( "%4dx%-4d alpha at Mix 1 off mix( a, 1, Mix ) by %.2g, at Mix 0.5 by %.2g (tolerance 1e-6); white against black under alpha 0 at Mix 1: "
-		            "worst %.2g (tolerance 1e-6); Mix 0: %zu values differ from the clip (bit-exact)",
-		            w, h, worst[ 0 ], worst[ 1 ], under, through ) );
+		            "worst %.2g (tolerance 1e-6); grey under the alpha ramp against lin( 0.5 ) a: worst %.2g (tolerance %.2g, four half-float roundings and "
+		            "the ramp's half 8-bit step); Mix 0: %zu values differ from the clip (bit-exact)",
+		            w, h, worst[ 0 ], worst[ 1 ], under, ramp, allowRamp, through ) );
 	}
 	return Verdict();
 }

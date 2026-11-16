@@ -51,8 +51,9 @@ ControlInfo integer( unsigned int id, const char* name, const char* group, int v
 //---------------------------------------------------------------------------
 // The defaults: a pinhole at the optimum for a 50 mm box in green light
 // (0.306 mm), four open zones focusing 550 nm when the plate is chosen,
-// upright, mirrored at the edges, and an Exposure set from Resolume's demo
-// clips through --pipe (tools/clips.py defaults).
+// upright, mirrored at the edges, and an Exposure of +0.2 EV, an averaging
+// meter's on Resolume's demo clips through --pipe (Controls.h,
+// tools/clips.py defaults).
 //---------------------------------------------------------------------------
 const ControlInfo kTable[] = {
 	option( PT_APERTURE, "Aperture", "Camera", static_cast< float >( kPinhole ), kApertureNames, 2 ),

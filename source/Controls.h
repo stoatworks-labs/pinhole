@@ -123,8 +123,12 @@ constexpr double kExposureLow = -4.0, kExposureHigh = 4.0;
 constexpr double kDefaultDistance  = 50e-3;
 constexpr double kDefaultFocus     = 550e-9;
 constexpr int kDefaultZones        = 4;
-/// Stops: set from Resolume's demo clips (tools/clips.py defaults).
-constexpr double kDefaultExposure  = 0.0;
+/// Stops: what an averaging meter sets, from Resolume's demo clips
+/// (tools/clips.py defaults). The blur keeps the light, so the frame's only
+/// loss is the cos^4 falloff: at 0 EV the 33 clips' output means keep 0.736
+/// to 0.968 of their own (640x360, the default 50 mm), and the median clip
+/// (Bass 003) is brought back by +0.174 EV, to 0.1 stop +0.2.
+constexpr double kDefaultExposure  = 0.2;
 /// The optimum at the default distance in 550 nm light, Mielenz's u = 1.7 pi.
 double DefaultDiameter();
 
