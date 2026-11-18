@@ -41,6 +41,46 @@ clip's own pulses up with the picture:** at +1 stop none crosses, at +2 stops **
 the bare clips did not, and at +4 stops **4**. The [user guide](docs/USER-GUIDE.md#flashing)
 has the numbers.
 
+<!-- downloads:start -->
+
+## Download
+
+**[v0.1.0](https://github.com/stoatworks-labs/pinhole/releases/tag/v0.1.0)** — prebuilt for macOS and Windows. Pick your platform:
+
+<details>
+<summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
+
+| Build | Download | Size |
+| --- | --- | --- |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`pinhole-0.1.0-macos-universal.dmg`](https://github.com/stoatworks-labs/pinhole/releases/download/v0.1.0/pinhole-0.1.0-macos-universal.dmg) | 238 KB |
+| Universal (Apple Silicon + Intel) · .zip archive | [`pinhole-macos-universal.zip`](https://github.com/stoatworks-labs/pinhole/releases/latest/download/pinhole-macos-universal.zip) | 196 KB |
+
+</details>
+
+<details>
+<summary><b>Windows</b> — x64</summary>
+
+| Build | Download | Size |
+| --- | --- | --- |
+| x64 · .exe installer | [`pinhole-0.1.0-windows-x86_64-setup.exe`](https://github.com/stoatworks-labs/pinhole/releases/download/v0.1.0/pinhole-0.1.0-windows-x86_64-setup.exe) | 252 KB |
+| x64 · .zip archive | [`pinhole-windows-x86_64.zip`](https://github.com/stoatworks-labs/pinhole/releases/latest/download/pinhole-windows-x86_64.zip) | 123 KB |
+
+</details>
+
+All builds, checksums and release notes: [github.com/stoatworks-labs/pinhole/releases](https://github.com/stoatworks-labs/pinhole/releases).
+
+macOS builds are signed and notarised and open normally. The Windows builds are unsigned, so SmartScreen warns once.
+
+<!-- downloads:end -->
+
+## Video
+
+> **Photosensitivity warning:** raising this effect's Exposure turns a clip's own pulses up,
+> so a pulsing clip can flash brightly through it. Large-area flashes in the video are kept to
+> three a second or fewer.
+
+[![Pinhole: a pinhole camera for Resolume that makes the picture by diffraction](docs/video-thumb.png)](https://www.youtube.com/watch?v=Jcs8DmTnOKc)
+
 ## Controls
 
 | Group | |
@@ -86,10 +126,10 @@ snapshot over REST, 18 November 2026, over a still of the harness's test card. L
 10 mm, a short box, whose corners fall to 11% of the centre's brightness. Right: Aperture Zone
 Plate with 16 open zones, the rest at the defaults.</sub>
 
-- **Windows: Arena 7.27.1 on win-lab, software rendering (Mesa llvmpipe, no GPU)**, the x64
-  DLL the release workflow built from this source before the tag (`e909473`, the registered
-  source; only documents changed after it), through the fleet's Arena gate on 18 November
-  2026: **9 passed, 0 failed, 0 skipped**. Arena loaded it and registered `SW Pinhole` `PC01`
+- **Windows: Arena 7.27.1 on win-lab, software rendering (Mesa llvmpipe, no GPU)**, the
+  release's own x64 DLL (from `pinhole-windows-x86_64.zip`), through the fleet's Arena gate
+  on 18 November 2026, shortly after the tag: **9 passed, 0 failed, 0 skipped**, as the DLL
+  built from the same source before the tag had passed with the same numbers. Arena loaded it and registered `SW Pinhole` `PC01`
   as an effect; all 15 controls (its 14 parameters and Arena's Opacity) matched name, order,
   type, range and default, the two names at Arena's length limit whole; the frame had content,
   14.2 levels from the bare input at the defaults against a 0.00-level noise floor; and all 10
