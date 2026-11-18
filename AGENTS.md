@@ -83,8 +83,10 @@ neighbour not duplicated: nothing in the fleet computes diffraction.
 - **No time, no randomness.** The plugin keeps no clock and draws nothing at random; the CPU
   rebuilds the patterns and taps only when the aperture, the distance or the raster's height
   changes.
-- **No OpenFX port, no browser demo, no user guide, no presets, no Windows build tried, no
-  workflows** (no remote; Actions are for public repos only).
+- **No OpenFX port and no presets.** (At the build there was also no browser demo, no user
+  guide, no Windows build and no workflows; the release added them once the repo went public
+  as `stoatworks-labs/pinhole`, where Actions are allowed: `ci.yml` and `release.yml` are
+  intensifier's (xenon's), `tools/wincheck.ps1` penumbra's.)
 
 ## Changes from the spec's first draft
 

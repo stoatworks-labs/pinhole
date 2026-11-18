@@ -107,7 +107,7 @@ other GPU has been measured.
 
 - **No host has loaded it.** Not Arena, not Avenue, on any platform. `oxbow` (the fleet's test
   host) reads the bundle and renders through it, which is all.
-- **Windows** has never been built, and there is no CI.
+- **Windows** has not been built yet: `release.yml` (GitHub Actions) is the first place it will be.
 - **Chosen, not measured:** the screen's 24 mm height (a 35 mm frame's), the three colour
   bands (400–500, 500–600, 600–700 nm, flat), the cut at 99% of each pattern's light, and the
   Exposure default's criterion (an averaging meter).
@@ -162,7 +162,8 @@ That's the whole lot: shader hygiene and `glslc`, a fresh universal build with n
 the bundle's architecture, plist and ad-hoc signature, a host's view of it through `oxbow`
 (required), every check at two rasters and again on the software renderer, the alpha check on
 Arena's demo clips (required), the pipe, the negative controls, the mutants, the sweep for
-dead controls and the render cost. There is no CI: this script is the verification.
+dead controls and the render cost. CI (`ci.yml`) builds on macOS and Windows and runs the
+checks that need no GL; the pixel checks need a GPU, so this script is where they run.
 `CLAUDE.md` lists the checks one by one; `./build/phtest --all` runs them all.
 
 Render a frame of your own:

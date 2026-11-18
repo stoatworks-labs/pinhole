@@ -88,10 +88,13 @@ step with this repo.
 - **Provisional hand copies:** `source/StoatworksAbout*.h` (guide = "", no user guide) and
   `ATTRIBUTIONS.md`. Once the project is registered in stoatworks-backend, `sync-about.py`
   and `sync-attributions.py` generate them; edit them there then.
-- **No workflows, and none to add**: the repo has no remote and may stay private; GitHub
-  Actions are for public repos only. `tools/verify.sh` is the whole of the verification.
-- Local only: `~/dev/pinhole`, no remote, nothing released, not on the website, never
-  loaded into Resolume. No Windows build has been tried.
+- **Workflows** (the repo is public, `stoatworks-labs/pinhole`, so Actions are allowed):
+  `ci.yml` builds on macOS (arm64, `phtest --list` and `--offline`, `glslc`) and Windows on
+  every push and pull request; `release.yml` builds the universal bundle and the x64 DLL
+  (checked by `tools/wincheck.ps1`), with a .dmg, zips and an NSIS installer, and publishes on
+  a `v*` tag. A `workflow_dispatch` of `release.yml` builds without publishing. The pixel
+  checks still run only in `tools/verify.sh`, on a Mac.
+- `~/Projects/resolume/pinhole`, public at `github.com/stoatworks-labs/pinhole`.
 
 ## Diagnostics
 
