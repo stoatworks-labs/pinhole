@@ -1,8 +1,9 @@
 # pinhole
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. **It has never been loaded into
-> Resolume.** What's established is established by an offline harness, `phtest`, that drives
+> (Anthropic), directed and reviewed by a human author. It has been loaded into Resolume
+> Arena on macOS and on Windows and ran there, over still pictures (see [Status](#status)).
+> Everything else below is established by an offline harness, `phtest`, that drives
 > the real plugin class through the same `ProcessOpenGL` a host calls, in a headless GL
 > context, on this Mac's GPU at two rasters and on Apple's software renderer. The plugin's
 > Fresnel pattern builder reproduces **69 of the 80** values of Lommel's tables that Rayleigh
@@ -31,6 +32,15 @@ for a **Fresnel zone plate** and it focuses harder, but one colour at a time: th
 plate is made for comes sharp and the others land around it as soft coloured light. Nothing is
 drawn: all of it comes out of one Fresnel integral over the aperture's open rings.
 
+**Photosensitivity.** The camera keeps the clip's light (it moves light about the frame, a
+frame's light stays the frame's), so at its default Exposure it flashes only where the clip
+does: measured with the WCAG general-flash rule (more than three flashes a second over the
+whole frame or any third-of-frame window), none of Resolume's 33 demo clips crosses the line
+through it at the defaults, with the zone plate or at the largest blur. **Exposure turns a
+clip's own pulses up with the picture:** at +1 stop none crosses, at +2 stops **3** do where
+the bare clips did not, and at +4 stops **4**. The [user guide](docs/USER-GUIDE.md#flashing)
+has the numbers.
+
 ## Controls
 
 | Group | |
@@ -53,9 +63,70 @@ the other Aperture.
 Over a transparent part of a clip the screen still shows light spread from the clip's opaque
 parts; a transparent pixel sends the hole no light. The output is opaque at Mix 1.
 
+**Moving lights.** A lone point of light on black changes shape slightly as it moves at
+large blurs, the same shape again every 16 px of travel at 1080p, almost all of it in its
+faint outer rim. It did not show on a real clip (Resolume's Beat 006, a turning structure
+studded with lamps, at the largest blur): see [Not established](#not-established).
+
 ## Status
 
-**v0.1.0, local only, 16 November 2026. Never loaded into Resolume.**
+**v0.1.0, 18 November 2026, and early days.** It has been loaded into Resolume Arena on
+Windows and on macOS (below), over still pictures: never a moving clip, never in a show. The
+macOS build is Developer ID-signed and notarised. There's a [user guide](docs/USER-GUIDE.md)
+and a [browser demo](#browser-demo), but no OpenFX port and no presets.
+
+### In Resolume
+
+![Two pictures of a city at dusk over colour bars. Left, a short box: the picture fairly
+sharp but its corners fallen almost to black. Right, a zone plate: soft all over, the lit
+windows smeared into a haze and the white sign glowing](docs/arena.jpg)
+
+<sub>SW Pinhole inside Resolume Arena 7.29.0 on an Apple M4 Max, from Arena's composition
+snapshot over REST, 18 November 2026, over a still of the harness's test card. Left: Distance
+10 mm, a short box, whose corners fall to 11% of the centre's brightness. Right: Aperture Zone
+Plate with 16 open zones, the rest at the defaults.</sub>
+
+- **Windows: Arena 7.27.1 on win-lab, software rendering (Mesa llvmpipe, no GPU)**, the x64
+  DLL the release workflow built from this source before the tag (`e909473`, the registered
+  source; only documents changed after it), through the fleet's Arena gate on 18 November
+  2026: **9 passed, 0 failed, 0 skipped**. Arena loaded it and registered `SW Pinhole` `PC01`
+  as an effect; all 15 controls (its 14 parameters and Arena's Opacity) matched name, order,
+  type, range and default, the two names at Arena's length limit whole; the frame had content,
+  14.2 levels from the bare input at the defaults against a 0.00-level noise floor; and all 10
+  controls moved the picture, Open Zones and Zone Focus with the zone plate chosen and Edge in
+  a long box (Exposure 73.2 levels, View 61.7, Distance 47.6, Diameter 17.7, Mix and Opacity
+  14.2, Aperture 9.2, Open Zones 9.0, Zone Focus 2.6, Edge 2.2). No shader or error lines in
+  Arena's log, and Arena stayed up. The four link buttons are listed, not pressed (they open a
+  browser).
+- **macOS: Arena 7.29.0 on an Apple M4 Max**, a local universal build of this source (ad-hoc
+  signed, not the notarised download), mounted on a clip over Arena's REST API and read off
+  Arena's composition snapshot (sharpness and differences over the middle three fifths of a
+  1920×1080 JPEG, the corners over the whole frame), over a still of the harness's test card:
+  - all **15** controls shown (with Arena's own Opacity) at the declared defaults, and the
+    About line `Pinhole v0.1.0 - MIT - Stoatworks Labs, stoatworks-labs.com`;
+  - two snapshots a second apart at the defaults differ by **0.0** levels a pixel: the camera
+    keeps no time and draws nothing random. Mix 0 gives the bare still exactly (**0.0**);
+  - Diameter: the picture's sharpness (the mean gradient, in levels) is **3.76** at the default
+    0.31 mm, **3.22** at 0.1 mm (diffraction) and **0.95** at 2 mm (the hole's shadow):
+    sharpest at the default, as meant. Back at the default, the picture came back exactly;
+  - Distance 10 mm leaves the corners at **0.111** of the centre's brightness (0.606 at the
+    default 50 mm, 0.819 on the bare still); 500 mm softens the picture to a sharpness of 1.13;
+  - Exposure −4 and +4 stops take the mean from 97.4 levels to **20.1** and **208.7**;
+  - View Obscura is the default picture turned 180° to within **0.42** levels a pixel, JPEG's
+    noise;
+  - Edge Black changes only the frame's border at the defaults (the corners 0.606 → 0.598 of
+    the centre, the middle unchanged), as the guide says;
+  - Zone Plate (4 open zones, 550 nm) softens the picture to 2.19, 16 zones to **1.51**, and
+    1 zone gives the best pinhole's picture back to within 0.4% (3.78 against 3.76): one open
+    zone is about the best hole. Zone Focus at 400 and 700 nm each moved it (2.3 and 2.0
+    levels); which colour comes sharp was not read off the snapshot (the harness measures it,
+    below);
+  - Open Zones and Zone Focus under Pinhole, and Diameter under Zone Plate, change nothing
+    (**0.0**);
+  - the probe's own layer was removed and Arena was quit without saving.
+
+Not measured in Resolume: its cost, a moving clip, whether Arena hands an effect straight or
+premultiplied colour (the plugin assumes straight), and any GPU but the M4 Max and llvmpipe.
 
 ### Measured offline, on macOS
 
@@ -87,30 +158,42 @@ there). The numbers below are from `phtest --all` on the same code (an arm64 bui
 ### Cost
 
 GPU time a frame (`GL_TIME_ELAPSED`, the median and the worst of the run) on the harness's
-card, from `phtest --bench` at the end of that verify run, on an Apple M4 Max shared with
-other builds:
+card, from `phtest --bench` on an Apple M4 Max in a quiet moment (the pre-flight run on the
+release's code):
 
 | raster | the defaults (0.31 mm at 50 mm) | the largest blur (0.1 mm at 500 mm) |
 | --- | --- | --- |
-| 1280×720 | **2.42 ms** (worst 3.45) | **2.91 ms** (worst 3.96) |
-| 1920×1080 | **5.55 ms** (worst 6.04) | **6.03 ms** (worst 6.74) |
-| 3840×2160 | not run | **20.09 ms** (worst 20.67): more than a 60 fps frame |
+| 1280×720 | **2.35 ms** | **2.81 ms** |
+| 1920×1080 | **4.85 ms** | **5.37 ms** |
+| 3840×2160 | not run | **17.78 ms** (worst **18.11**): **over a 60 fps frame** (16.7 ms) on its own |
 
 The kernel's levels grow with the blur (3 to 7 at 720p, 4 to 8 at 1080p, 9 at 4K) and each
 level is at most 241 taps, so the largest blur costs little more than the defaults. The CPU
 rebuilds the patterns and taps in 10–11 ms, only when the aperture, the distance or the
-raster's height changes. An earlier build the same afternoon measured 2.32, 2.86, 4.83, 5.29
-and 17.72 ms for the same five cases: take that spread as this shared machine's noise. No
-other GPU has been measured.
+raster's height changes. The GPU is shared, and it shows: the same bench run while Resolume
+Arena and other work were running on the Mac gave 2.71, 3.29, 5.63 and 8.31 ms, and **30.75
+ms** at 4K (worst 34.03). No other GPU has been measured, and nothing inside Resolume.
 
 ### Not established
 
-- **No host has loaded it.** Not Arena, not Avenue, on any platform. `oxbow` (the fleet's test
-  host) reads the bundle and renders through it, which is all.
-- **Windows** has not been built yet: `release.yml` (GitHub Actions) is the first place it will be.
+- **Resolume, beyond a still picture.** It has loaded in Arena on macOS and Windows (above),
+  never on a moving clip, never in a show, never in Avenue.
+- **Moving lights.** The pyramid (below) makes the plugin slightly shift-variant: a lone point
+  of light on black changes shape as it moves, the same shape again every 16 px of travel at
+  1080p. Measured with the release's moving-dot check (a Gaussian dot sliding through
+  `phtest --pipe`, each frame against the same frame moved by whole pixels): at the largest
+  blur two positions 8 px apart differ by up to **25%** of the point's picture, almost all in
+  its faint outer rim (the rim's own picture changes by up to 85%), which breaks into notches
+  and closes again; with a 16-zone plate **3.8%**; near the defaults **0.2%**. On a real clip it did not
+  show: Resolume's Beat 006 at the largest blur, watched frame by frame, its lamps' discs move
+  smoothly, and the picture's frame-to-frame roughness (the second difference in time over
+  the first) is **0.87**, against **0.99** for the same clip under a shift-invariant Gaussian
+  blur. A bright lamp on black at a long Distance or with many zones is where to look for it.
+  Storing the pyramid in full floats or making it finer would cost GPU time; not tried.
 - **Chosen, not measured:** the screen's 24 mm height (a 35 mm frame's), the three colour
-  bands (400–500, 500–600, 600–700 nm, flat), the cut at 99% of each pattern's light, and the
-  Exposure default's criterion (an averaging meter).
+  bands (400–500, 500–600, 600–700 nm, flat), the cut at 99% of each pattern's light (the last
+  1% is dropped, so a bright light's widest veil is a little short; widening the cut costs
+  taps), and the Exposure default's criterion (an averaging meter).
 - **What Fresnel's approximation leaves out:** the scene at a finite distance, the obliquity
   factor, the hole's thickness and its own vignetting, polarisation. One pattern serves the
   whole frame, so the pattern's growth off the axis is left out.
@@ -125,9 +208,14 @@ other GPU has been measured.
 - **Resolume's alpha.** The plugin treats a clip's colour as straight alpha, which is what
   Arena's DXV demo clips decode to; whether Resolume hands an effect premultiplied colour has
   not been checked.
+- **The best hole sits 1.0–1.5% below Mielenz's** in the harness's measurement (above), in
+  every colour, within the check's tolerance. The default is Mielenz's; whether the 1.7π
+  criterion or the measured optimum is the better default has not been settled, and nobody is
+  likely to see the difference.
+- **The edges of the range:** Distance below 10 mm and a hole above 2 mm are not reachable.
 - The Exposure default was measured on the demo clips through `--pipe`, not looked at in a
-  show.
-- No user guide, no presets, no OpenFX port and no browser demo.
+  show; a centre-weighted meter would have chosen differently.
+- No presets and no OpenFX port.
 
 ## Browser demo
 

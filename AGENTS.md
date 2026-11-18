@@ -233,8 +233,16 @@ Assumed or chosen, not measured: the 24 mm screen; the box bands; the 99% cut; t
 pattern on the axis serves the whole frame; straight alpha in Resolume; the averaging meter
 as the Exposure criterion.
 
-Not done: loading it into Resolume on any platform; a Windows build; a user guide, presets,
-an OpenFX port, a browser demo; looking at the demo clips in a show rather than as numbers.
+Done since: loaded into Resolume Arena 7.29.0 on this Mac (over REST, a still clip: every
+control as declared and moving the picture) and 7.27.1 on win-lab (the fleet's gate, 9/0/0);
+Windows built by CI; a user guide; a browser demo (the plugin's C++ as WebAssembly). Not
+done: presets, an OpenFX port, a moving clip or a show in Resolume, its cost inside Arena,
+looking at the demo clips in a show rather than as numbers. The moving-point check
+(v0.1.0): a lone point changes shape with its position against the pyramid's coarse grid,
+period 16 px at 1080p, up to 25% of its patch at the largest blur (almost all in the faint
+rim), 3.8% with a 16-zone plate, 0.2% near the defaults; not seen on Beat 006 at the largest
+blur (the second difference in time over the first, 0.87, against 0.99 for the same clip
+under a shift-invariant Gaussian blur).
 
 ## Would this hold on another rasteriser, at another raster?
 

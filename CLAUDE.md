@@ -21,8 +21,9 @@ step with this repo.
 - Configure: `cmake -B build -DCMAKE_BUILD_TYPE=Release -DPINHOLE_BUILD_TOOLS=ON`
 - Fast dev build: add `-DCMAKE_OSX_ARCHITECTURES=arm64`
 - Build: `cmake --build build -j8`
-- Install to Resolume: `cmake --install build` (into Arena's Extra Effects).
-  Never from a shared session on this Mac: nothing here has been loaded into Arena.
+- Install to Resolume: `cmake --install build` (into Arena's Extra Effects). Only when
+  Arena is not running (`pgrep -x Arena`): Allan may be using it. It has loaded in Arena
+  7.29.0 here and 7.27.1 on win-lab (v0.1.0).
 - Render offline: `./build/phtest --out /tmp/p.png` (the defaults over the harness's card,
   1280x720; the plugin keeps no time, so one frame is the picture)
 - A clip of your own: `--clip clip.rgba` (raw RGBA at `--size`, top row first)

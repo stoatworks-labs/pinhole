@@ -7,7 +7,9 @@
     <meta name="description" content="Try the Pinhole FFGL effect for Resolume in your browser: a pinhole camera and camera obscura looking at a clip, with a Fresnel zone plate as an option. The hole makes the picture by Fresnel diffraction, one pattern per colour band: sharpest at one hole size, red softer than blue for small holes, cos⁴ dark corners. The plugin's own C++ compiled unmodified to WebAssembly, drawing with its own GLSL in WebGL2. A demo, not the plugin." />
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./vendor/kit.css" />
+    <link rel="stylesheet" href="./pinhole.css" />
     <link rel="canonical" href="https://pinhole-demo.stoatworks-labs.com/" />
+    <meta name="project-page" content="https://stoatworks-labs.com/software/pinhole/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Stoatworks Labs" />
     <meta property="og:title" content="Pinhole — browser demo | Stoatworks Labs" />
@@ -20,6 +22,18 @@
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
+    <section class="ph-warning" id="photosensitivity" aria-labelledby="ph-warning-title">
+      <h2 class="ph-warning__title" id="ph-warning-title">Photosensitivity warning</h2>
+      <p>
+        At its default Exposure this effect only flashes where the clip does. Turned up,
+        <strong>Exposure</strong> turns a clip's own pulses up too, so a pulsing video can flash
+        brightly through it: at +2 stops 3 of Resolume's 33 demo clips flash faster than three
+        times a second through it, where the clips on their own did not. Flashing light can
+        trigger seizures in people with photosensitive epilepsy. This page's generated clips move
+        slowly and don't pulse; a video of your own can.
+      </p>
+    </section>
+
     <main id="demo">
       <noscript>
         <h1>Pinhole</h1>
@@ -36,7 +50,13 @@
           This demo runs the plugin's own C++, compiled to WebAssembly, and its
           shaders in your browser, so it needs JavaScript and WebGL2.
         </p>
+        <p>
+          The plugin itself, its downloads and its user guide are on
+          <a href="https://stoatworks-labs.com/software/pinhole/">its project page</a>.
+        </p>
         <ul>
+          <li><a href="https://stoatworks-labs.com/software/pinhole/">Project page and downloads</a></li>
+          <li><a href="https://stoatworks-labs.com/software/pinhole/guide/">User guide</a></li>
           <li><a href="https://github.com/stoatworks-labs/pinhole">Source on GitHub</a></li>
         </ul>
       </noscript>
