@@ -96,6 +96,22 @@ step with this repo.
   checks still run only in `tools/verify.sh`, on a Mac.
 - `~/Projects/resolume/pinhole`, public at `github.com/stoatworks-labs/pinhole`.
 
+## Browser demo
+- `demo/` is served at https://pinhole-demo.stoatworks-labs.com/ by the Worker in
+  `wrangler.toml` (a route, plus a proxied AAAA `100::` record for `pinhole-demo`: delete the
+  record and the page goes dark while deploys stay green). `.github/workflows/deploy.yml`
+  redeploys it on every push to main; by hand: `cf-run npx wrangler deploy`.
+- **`demo/pinhole-core.{js,wasm}` is the plugin's C++, compiled and committed.** After ANY
+  change under `source/` (the generated `StoatworksAbout*.h` included), run
+  `demo/tools/build-wasm.sh` (emscripten's `em++`) and commit both outputs and
+  `demo/wasm/inputs.sha256`; `tools/verify.sh` fails until you do.
+- `demo/shaders.js` is a copy: after changing a shader, `python3 demo/tools/check_shaders.py
+  --write`. The same script checks every uniform's setter against its GLSL type and the
+  .wasm's input hashes.
+- Serve locally: `cd demo && python3 -m http.server 8000`. Against phtest:
+  `python3 demo/tools/crosscheck.py --phtest build/phtest` (Chrome on the real GPU).
+- `demo/vendor/` is the shared kit (`stoatworks-backend/resolume-demo`); never edit it.
+
 ## Diagnostics
 
 `source/Diag.{h,cpp}`: log file only, no crash handler (this runs inside Resolume).

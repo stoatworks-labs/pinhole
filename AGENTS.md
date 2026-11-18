@@ -317,6 +317,98 @@ belong to the plate, and the default is the pinhole. Diameter is likewise dead u
 plate. Edge stays alive bare (0.17) but faint: at the default hole the blur reaches two or
 three pixels past the frame's edge at 180 lines.
 
+## The browser demo (2026-11-18)
+
+https://pinhole-demo.stoatworks-labs.com/, from `demo/`, deployed by `wrangler.toml` (a
+Worker route: the zone is at Cloudflare's 100 custom domains, so `pinhole-demo` is a proxied
+AAAA `100::` record made through the API) and `.github/workflows/deploy.yml` on every push to
+main.
+
+- **It runs the plugin, it doesn't port it.** `demo/pinhole-core.wasm` is `Pinhole.cpp` and
+  everything it calls (Optics, Controls, PassBuffer, Shaders, Diag) plus the FFGL SDK's plugin
+  classes, FFGLShader and FFGLFBO, compiled unmodified by emscripten
+  (`demo/tools/build-wasm.sh`, fountain's and polyhedral's pattern). Chosen over a JavaScript
+  port because the pattern builder (the pupil's projection through G(Y), one FFT per
+  wavelength, the band means, in double) and the pyramid's taps are where the plugin's checks
+  are, and a port would have only a reader to check it. Left out: the registration file
+  (`EffectPlugin.cpp`). The script fails if a `source/*.cpp` it doesn't list appears.
+- **What is the page's**: `demo/wasm/glue.cpp` plays the host (constructs the plugin, reads
+  its declarations back through the SDK so the panel is built from them, forwards
+  SetFloatParameter and ProcessOpenGL with Width equal to HardwareWidth and the canvas as the
+  host FBO, as phtest's rig does, and hands the page the plugin's own read-outs: levels, taps,
+  support, the light kept per band, the last rebuild's time, u); `demo/wasm/gl_shim.cpp` takes
+  four GL calls (glShaderSource, refusing any text that isn't byte for byte the page's
+  assembly of `demo/shaders.js`, then the kit's `port()`; glEnable/glDisable/glIsEnabled, for
+  GL_PROGRAM_POINT_SIZE, which WebGL2 lacks and the plugin saves and restores); the read-outs'
+  units, the tooltips, the Open Zones number field, the line under the picture, Diag's log
+  shown from emscripten's memory file system, and the presets (written in millimetres,
+  nanometres and EV, converted by the plugin's own inverse functions through `ph_param_from`).
+- **Checked by `tools/verify.sh`** (`demo/tools/check_shaders.py`, before the build): every
+  GLSL piece character for character, the order AssembleVertex()/Assemble() join them and
+  InitGL's stage table; every uniform each pass declares set by the setter its GLSL type takes
+  and nothing undeclared set (linear 2, down 3, ring 9, final 18: WebGL2 drops a wrong setter
+  without an error); and the hashes of every input the .wasm was built from
+  (`demo/wasm/inputs.sha256`, 34 files). A glUniform1f on the integer TapCount, a removed
+  AlphaModel set and a changed source each failed it. Any change under `source/` needs
+  `demo/tools/build-wasm.sh` rerun and its outputs committed.
+- **Compared with phtest, once (2026-11-18), by `demo/tools/crosscheck.py`** (in the repo;
+  nothing runs it by itself: it needs Chrome, cdpshot and a built phtest). Headless Chrome on
+  the real GPU (ANGLE on Metal), the page paused; Mix 0 makes the final pass hand the clip back
+  untouched, so the canvas read then is the exact input frame; that frame goes to
+  `phtest --pipe` at the same raster with the same host values (the float32 the page sent).
+  Apple M4 Max, page through ANGLE/Metal against phtest through Apple's OpenGL:
+
+  | case | raster, clip | colour values off | max |
+  | --- | --- | --- | --- |
+  | defaults | 960×540 grid | 0 | 0 |
+  | defaults | 960×540 scene | 0 | 0 |
+  | zone plate | 960×540 grid | 0 | 0 |
+  | zone plate, 8 zones at 450 nm | 960×540 spot | 1 of 1,555,200 | 1 code |
+  | 2 mm hole at 10 mm | 960×540 grid | 0 | 0 |
+  | 0.1 mm hole at 500 mm | 960×540 grid | 0 | 0 |
+  | Obscura, Edge Black, 1.1 mm | 960×540 grid | 0 | 0 |
+  | defaults | 1280×720 grid | 4 of 2,764,800 | 1 code |
+  | zone plate | 1280×720 grid | 0 | 0 |
+
+  Alpha identical in every case. The effect itself moves the clip by 1.9 to 26.1 codes on
+  average across the cases; the negative control (phtest with Diameter one slider step, 0.001,
+  off) puts 28,399 values off on the defaults case (mean 0.018 codes), so the comparison can
+  see a step the panel can make.
+- **Also checked on the page**: the read-outs at the defaults (0.306 mm, 550 nm, 50.0 mm,
+  +0.20 EV) and the line under the picture (u = 1.70π, 3 coarser levels, 749 taps, 47.4 px of
+  support, 99.0/99.2/99.3% kept); Diameter to its end changes the picture (mean 14.4 codes,
+  max 137), Aperture to Zone Plate (7.8, 57), Open Zones 4 to 12 (4.35); Defaults gives the
+  first frame back exactly; all seven presets render; a raster change (1920×1080, a pixel
+  22.2 µm); parameters from the query string; embed mode; no horizontal scroll at 390 px; no
+  console errors and no WebGL warnings (CDP's Runtime and Log, the real GPU). The rebuild
+  takes 12–103 ms in WebAssembly here (103 at twelve open zones), against 10–11 ms natively.
+- **No photosensitivity gate.** Pinhole keeps no time, draws nothing at random and has no
+  audio: each frame is a blur and a fixed gain of the clip's current frame, so the picture
+  changes only when the clip or a control does, and it cannot flash where the clip doesn't.
+  The clips are the kit's, shared by every demo, and Pause holds them. Not measured.
+- **Every gap, as the page discloses it** (banner, the "does not reproduce" list): it runs
+  the plugin, not a port, and the panel's units, tooltips and presets are the page's; GL is
+  emscripten's WebGL2 with four shimmed entry points and the kit's GLSL port (version line,
+  highp defaults), GL_PROGRAM_POINT_SIZE reading as off; the RGBA16F pyramid needs
+  EXT_color_buffer_float (refused without it) and the arithmetic is the browser's GPU, not the
+  Mac's driver; the raster is the page's (the 24 mm screen makes a pixel 24 mm / H); the input
+  is unpadded with the viewport at the origin, and the output an 8-bit canvas; the kit uploads
+  premultiplied colour where the plugin expects straight, so the kit's alpha clip is left out;
+  the patterns are rebuilt on the page's thread in WebAssembly (no fused multiply-add, musl's
+  libm); the crosscheck ran once, on one GPU; no time and no randomness, so Pause, Step and
+  Restart act on the clip alone; Open Zones is a number field and the About block is off the
+  panel; nothing is measured, and the plugin has never been in Resolume.
+- **Traps hit**: `cdpshot.Chrome.__init__` already calls `self.call()`, so a subclass that
+  collects events must set its attributes before `super().__init__()`; a paused page draws
+  exactly one frame per change, so read the frame count before dispatching the change, not
+  after; `preserveDrawingBuffer` can be forced from outside with
+  `Page.addScriptToEvaluateOnNewDocument` and a `getContext` override, leaving the page alone;
+  `LastRebuildMs()` is 0 on every frame that doesn't rebuild, so the page keeps the last
+  non-zero value; every vertex stage is the same text, so the shim's match list names only the
+  first; `AssembleVertex( Pass )` with one return and no switch needed its own parse in
+  `check_shaders.py`; the kit's hidden embed statement says "ported to WebGL2" even for a
+  WebAssembly demo (kit text, left alone).
+
 ## Open questions
 
 - **Straight or premultiplied alpha in Resolume's pipeline?** The plugin weights the clip's

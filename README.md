@@ -129,6 +129,16 @@ other GPU has been measured.
   show.
 - No user guide, no presets, no OpenFX port and no browser demo.
 
+## Browser demo
+
+[pinhole-demo.stoatworks-labs.com](https://pinhole-demo.stoatworks-labs.com/) runs the
+plugin in your browser: its own C++, the plugin class with its Fresnel pattern builder,
+compiled unmodified to WebAssembly and drawing with its own GLSL in WebGL2. The page is the
+host, the clips are generated (or a picture of your own) and the raster is the page's. A
+frame of the page matched `phtest --pipe`'s on the same input and settings in nine cases:
+seven byte for byte, two by one 8-bit code in a handful of values. It is a demo, not the
+plugin, and the page lists what it leaves out.
+
 ## Build
 
 macOS (universal: Apple Silicon and Intel):
